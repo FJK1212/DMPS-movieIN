@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>デュエプレ戦績トラッカー</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; background-color: #f0f2f5; color: #333; margin: 0; padding: 0; }
+        .app-container { max-width: 800px; margin: auto; padding: 20px; }
+        
+        .screen { display: none; animation: fadeIn 0.3s; }
+        .screen.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        h1, h2, h3 { margin-top: 0; color: #2c3e50; text-align: center; }
+        .step-indicator { text-align: center; color: #7f8c8d; font-size: 14px; margin-bottom: 15px; font-weight: bold; }
+
+        .btn-large { display: block; width: 100%; padding: 18px; margin-bottom: 15px; font-size: 18px; font-weight: bold; border-radius: 8px; border: none; cursor: pointer; transition: 0.2s; }
+        .btn-nd { background-color: #3498db; color: white; }
+        .btn-nd:hover { background-color: #2980b9; }
+        .btn-ad { background-color: #e74c3c; color: white; }
+        .btn-ad:hover { background-color: #c0392b; }
+        .btn-next { background-color: #2ecc71; color: white; margin-top: 20px; }
+        .btn-next:hover { background-color: #27ae60; }
+        .btn-finish { background-color: #f39c12; color: white; font-size: 20px; padding: 20px; margin-top: 20px;}
+        .btn-finish:hover { background-color: #e67e22; }
+        .btn-outline { background-color: white; border: 2px solid #3498db; color: #3498db; }
+        .btn-danger { background-color: #e74c3c; color: white; padding: 10px; border: none; border-radius: 4px; cursor: pointer;}
+
+        select, input[type="text"] { width: 100%; padding: 15px; border: 2px solid #ddd; border-radius: 8px; font-size: 18px; box-sizing: border-box; margin-bottom: 10px; }
+        .radio-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        .radio-btn { flex: 1; text-align: center; }
+        .radio-btn input[type="radio"] { display: none; }
+        .radio-btn label { display: block; padding: 15px; background-color: #ecf0f1; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; transition: 0.2s; border: 2px solid transparent; }
+        .radio-btn input[type="radio"]:checked + label { background-color: #e3f2fd; border-color: #3498db; color: #2980b9; }
+
+        .image-area { text-align: center; margin-top: 10px; padding: 15px; background-color: white; border-radius: 8px; border: 2px dashed #ccc; }
+        .preview-img { max-width: 100%; max-height: 250px; border-radius: 4px; display: none; margin: 10px auto; }
+        .file-input { display: none; }
+        .btn-upload { background-color: #95a5a6; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+
+        .stats-grid { display: flex; gap: 15px; text-align: center; margin-bottom: 20px; }
+        .stat-box { flex: 1; background: #e8f4f8; padding: 15px; border-radius: 8px; }
+        .stat-value { font-size: 24px; font-weight: bold; color: #2980b9; }
+        .chart-container { width: 100%; max-width: 400px; margin: 0 auto 30px auto; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
+        th { background-color: #f8f9fa; }
+        .table-scroll { overflow-x: auto; margin-bottom: 20px; }
+        .matchup-table th { white-space: nowrap; }
+
+        .flex-row { display: flex; gap: 10px; margin-bottom: 15px; }
+        
+        /* デッキ入力枠のデザイン */
+        .deck-section { padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        .deck-section-my { background-color: #f4f9f9; border-left: 6px solid #3498db; }
+        .deck-section-opp { background-color: #fdf5f5; border-left: 6px solid #e74c3c; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    
+    <div id="screen-format" class="screen active">
+        <div class="card" style="text-align: center; padding-top: 40px; padding-bottom: 40px;">
+            <h1>📊 戦績トラッカー</h1>
+            <p style="color: #7f8c8d; margin-bottom: 30px;">記録するフォーマットを選択してください</p>
+            <button class="btn-large btn-nd" onclick="selectFormat('ND')">New Division (ND)</button>
+            <button class="btn-large btn-ad" onclick="selectFormat('AD')">All Division (AD)</button>
+            <button class="btn-large btn-outline" onclick="goToDashboardOnly()" style="margin-top: 30px;">データだけを見る</button>
+        </div>
+    </div>
+
+    <div id="screen-decks" class="screen">
+        <div class="card">
+            <div class="step-indicator">Step 1 / 2</div>
+            
+            <div class="deck-section deck-section-my">
+                <h3 style="text-align: left; margin-top: 0; color: #2980b9;">🟦 自分の使用デッキ</h3>
+                <div class="flex-row">
+                    <select id="myDeckSelect" onchange="loadDeckImage('my')"></select>
+                </div>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <input type="text" id="newMyDeck" placeholder="リストにない場合は追加" style="padding: 10px; font-size: 14px; margin-bottom: 0;">
+                    <button onclick="addNewDeck('my')" class="btn-large btn-nd" style="width: auto; padding: 10px 15px; margin: 0; font-size: 14px;">追加</button>
+                </div>
+                <div class="image-area">
+                    <p style="margin-top:0; font-size:14px; color:#666;">デッキリスト画像 (任意)</p>
+                    <img id="myDeckImg" class="preview-img">
+                    <input type="file" id="myDeckFile" class="file-input" accept="image/*" onchange="uploadImage('my', event)">
+                    <button class="btn-upload" onclick="document.getElementById('myDeckFile').click()">📷 画像を貼る / 変更する</button>
+                </div>
+            </div>
+
+            <div class="deck-section deck-section-opp">
+                <h3 style="text-align: left; margin-top: 0; color: #c0392b;">🟥 相手のデッキ</h3>
+                <div class="flex-row">
+                    <select id="oppDeckSelect" onchange="loadDeckImage('opp')"></select>
+                </div>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <input type="text" id="newOppDeck" placeholder="リストにない場合は追加" style="padding: 10px; font-size: 14px; margin-bottom: 0;">
+                    <button onclick="addNewDeck('opp')" class="btn-large btn-ad" style="width: auto; padding: 10px 15px; margin: 0; font-size: 14px;">追加</button>
+                </div>
+                <div class="image-area">
+                    <p style="margin-top:0; font-size:14px; color:#666;">相手の盤面・特徴的なカードなど (任意)</p>
+                    <img id="oppDeckImg" class="preview-img">
+                    <input type="file" id="oppDeckFile" class="file-input" accept="image/*" onchange="uploadImage('opp', event)">
+                    <button class="btn-upload" onclick="document.getElementById('oppDeckFile').click()">📷 画像を貼る / 変更する</button>
+                </div>
+            </div>
+
+            <button class="btn-large btn-next" onclick="nextScreen('screen-result')">次へ ➔</button>
+            <button class="btn-large btn-outline" style="padding: 10px; font-size: 14px;" onclick="goToScreen('screen-format')">戻る</button>
+        </div>
+    </div>
+
+    <div id="screen-result" class="screen">
+        <div class="card">
+            <div class="step-indicator">Step 2 / 2</div>
+            <h2>試合結果</h2>
+            
+            <h3 style="font-size: 16px; text-align: left; margin-bottom: 10px;">先手 / 後手</h3>
+            <div class="radio-group">
+                <div class="radio-btn">
+                    <input type="radio" id="turnFirst" name="turn" value="先攻" checked>
+                    <label for="turnFirst">先攻</label>
+                </div>
+                <div class="radio-btn">
+                    <input type="radio" id="turnSecond" name="turn" value="後攻">
+                    <label for="turnSecond">後攻</label>
+                </div>
+            </div>
+
+            <h3 style="font-size: 16px; text-align: left; margin-bottom: 10px;">勝敗</h3>
+            <div class="radio-group">
+                <div class="radio-btn">
+                    <input type="radio" id="resultWin" name="result" value="勝ち" checked>
+                    <label for="resultWin" style="color:#27ae60;">勝ち</label>
+                </div>
+                <div class="radio-btn">
+                    <input type="radio" id="resultLose" name="result" value="負け">
+                    <label for="resultLose" style="color:#c0392b;">負け</label>
+                </div>
+            </div>
+
+            <button class="btn-large btn-finish" onclick="saveAndFinish()">記録して終了</button>
+            <button class="btn-large btn-outline" style="padding: 10px; font-size: 14px;" onclick="goToScreen('screen-decks')">戻る</button>
+        </div>
+    </div>
+
+    <div id="screen-dashboard" class="screen">
+        <div class="card">
+            <h2>📈 <span id="dashFormatTitle">ND</span> 成績サマリー</h2>
+            <button class="btn-large btn-nd" onclick="goToScreen('screen-format')" style="padding: 12px; font-size: 16px; margin-bottom: 20px;">＋ 新しい対戦を記録する</button>
+
+            <div class="stats-grid">
+                <div class="stat-box"><div>総対戦数</div><div class="stat-value" id="totalMatches">0</div></div>
+                <div class="stat-box"><div>勝利数</div><div class="stat-value" id="totalWins">0</div></div>
+                <div class="stat-box"><div>勝率</div><div class="stat-value" id="winRate">0.0%</div></div>
+            </div>
+
+            <h3 style="margin-top: 30px;">🎯 対面した相手の割合 (メタ分布)</h3>
+            <div class="chart-container">
+                <canvas id="metaPieChart"></canvas>
+            </div>
+
+            <h3 style="margin-top: 30px;">⚔️ 対面相性表</h3>
+            <div id="matchupTableContainer" class="table-scroll"></div>
+
+            <h3 style="margin-top: 30px;">🕒 履歴データ</h3>
+            <div class="table-scroll">
+                <table>
+                    <thead><tr><th>日時</th><th>自デッキ</th><th>相手デッキ</th><th>先/後</th><th>結果</th></tr></thead>
+                    <tbody id="historyTableBody"></tbody>
+                </table>
+            </div>
+            
+            <button onclick="clearData()" class="btn-danger" style="width:100%; padding:15px; font-size:16px;">このフォーマットの全データを消去</button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    let currentFormat = 'ND';
+    let pieChartInstance = null; 
+
+    let allMatchData = JSON.parse(localStorage.getItem('cardGameStats')) || [];
+    allMatchData = allMatchData.map(d => d.format ? d : { ...d, format: 'ND' });
+
+    let deckLists = {
+        'ND': JSON.parse(localStorage.getItem('customDeckList_ND')) || ['赤青アポロヌス', '白青天門', '青黒ツヴァイランサー', '5cコントロール', 'その他'],
+        'AD': JSON.parse(localStorage.getItem('customDeckList_AD')) || ['黒緑速攻', 'ツヴァイ', '天門', 'その他']
+    };
+
+    let deckImages = {
+        'ND': JSON.parse(localStorage.getItem('deckImages_ND')) || {},
+        'AD': JSON.parse(localStorage.getItem('deckImages_AD')) || {}
+    };
+
+    function goToScreen(screenId) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(screenId).classList.add('active');
+        window.scrollTo(0, 0);
+    }
+
+    function selectFormat(format) {
+        currentFormat = format;
+        document.getElementById('dashFormatTitle').innerText = format;
+        
+        updateDeckDropdowns();
+        
+        // 新しい試合を始める時は、相手のデッキだけ一番上にリセットする
+        document.getElementById('oppDeckSelect').selectedIndex = 0;
+        loadDeckImage('opp');
+        
+        goToScreen('screen-decks');
+    }
+
+    function goToDashboardOnly() {
+        document.getElementById('dashFormatTitle').innerText = currentFormat;
+        renderDashboard();
+        goToScreen('screen-dashboard');
+    }
+
+    function nextScreen(nextId) {
+        goToScreen(nextId);
+    }
+
+    function updateDeckDropdowns() {
+        const mySelect = document.getElementById('myDeckSelect');
+        const oppSelect = document.getElementById('oppDeckSelect');
+        
+        // 現在選択されているデッキがあれば記憶（再描画時にリセットされないようにするため）
+        const currentMyDeck = mySelect.value;
+        const currentOppDeck = oppSelect.value;
+
+        const currentDecks = deckLists[currentFormat];
+
+        mySelect.innerHTML = '';
+        oppSelect.innerHTML = '';
+
+        currentDecks.forEach(deck => {
+            mySelect.innerHTML += `<option value="${deck}">${deck}</option>`;
+            oppSelect.innerHTML += `<option value="${deck}">${deck}</option>`;
+        });
+
+        // 以前選んでいたデッキがあれば復元する
+        if (currentMyDeck && currentDecks.includes(currentMyDeck)) mySelect.value = currentMyDeck;
+        if (currentOppDeck && currentDecks.includes(currentOppDeck)) oppSelect.value = currentOppDeck;
+
+        loadDeckImage('my');
+        loadDeckImage('opp');
+    }
+
+    function addNewDeck(type) {
+        const inputId = type === 'my' ? 'newMyDeck' : 'newOppDeck';
+        const inputEl = document.getElementById(inputId);
+        const newDeck = inputEl.value.trim();
+        
+        if (newDeck === '') return;
+        if (!deckLists[currentFormat].includes(newDeck)) {
+            deckLists[currentFormat].push(newDeck);
+            localStorage.setItem(`customDeckList_${currentFormat}`, JSON.stringify(deckLists[currentFormat]));
+            updateDeckDropdowns();
+            
+            const selectId = type === 'my' ? 'myDeckSelect' : 'oppDeckSelect';
+            document.getElementById(selectId).value = newDeck;
+            loadDeckImage(type);
+        }
+        inputEl.value = '';
+    }
+
+    function loadDeckImage(type) {
+        const selectId = type === 'my' ? 'myDeckSelect' : 'oppDeckSelect';
+        const imgId = type === 'my' ? 'myDeckImg' : 'oppDeckImg';
+        const deckName = document.getElementById(selectId).value;
+        const base64 = deckImages[currentFormat][deckName];
+
+        const imgEl = document.getElementById(imgId);
+        if (base64) {
+            imgEl.src = base64;
+            imgEl.style.display = 'block';
+        } else {
+            imgEl.src = '';
+            imgEl.style.display = 'none';
+        }
+    }
+
+    function uploadImage(type, event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const selectId = type === 'my' ? 'myDeckSelect' : 'oppDeckSelect';
+        const deckName = document.getElementById(selectId).value;
+
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = function(e) {
+            const img = new Image();
+            img.src = e.target.result;
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 600;
+                let width = img.width;
+                let height = img.height;
+                if (width > MAX_WIDTH) {
+                    height *= MAX_WIDTH / width;
+                    width = MAX_WIDTH;
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6); 
+                try {
+                    deckImages[currentFormat][deckName] = compressedBase64;
+                    localStorage.setItem(`deckImages_${currentFormat}`, JSON.stringify(deckImages[currentFormat]));
+                    loadDeckImage(type); 
+                } catch (error) {
+                    alert("⚠️ 容量上限です。古い画像を削除してください。");
+                }
+            }
+        }
+    }
+
+    function saveAndFinish() {
+        const now = new Date();
+        const formattedDate = `${now.getMonth() + 1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+        const newRecord = {
+            date: formattedDate,
+            format: currentFormat,
+            myDeck: document.getElementById('myDeckSelect').value,
+            oppDeck: document.getElementById('oppDeckSelect').value,
+            turn: document.querySelector('input[name="turn"]:checked').value,
+            result: document.querySelector('input[name="result"]:checked').value
+        };
+
+        allMatchData.push(newRecord);
+        localStorage.setItem('cardGameStats', JSON.stringify(allMatchData));
+
+        document.getElementById('turnFirst').checked = true;
+        document.getElementById('resultWin').checked = true;
+
+        renderDashboard();
+        goToScreen('screen-dashboard');
+    }
+
+    function renderDashboard() {
+        const currentData = allMatchData.filter(d => d.format === currentFormat);
+        
+        const totalMatches = currentData.length;
+        const totalWins = currentData.filter(d => d.result === '勝ち').length;
+        const winRate = totalMatches === 0 ? 0 : (totalWins / totalMatches) * 100;
+
+        document.getElementById('totalMatches').innerText = totalMatches;
+        document.getElementById('totalWins').innerText = totalWins;
+        document.getElementById('winRate').innerText = winRate.toFixed(1) + "%";
+
+        renderPieChart(currentData);
+        renderMatchupTable(currentData);
+
+        const tbody = document.getElementById('historyTableBody');
+        tbody.innerHTML = '';
+        [...currentData].reverse().forEach(data => {
+            tbody.innerHTML += `<tr>
+                <td>${data.date}</td>
+                <td>${data.myDeck}</td>
+                <td>${data.oppDeck}</td>
+                <td>${data.turn}</td>
+                <td style="color: ${data.result === '勝ち' ? '#27ae60' : '#c0392b'}; font-weight: bold;">${data.result}</td>
+            </tr>`;
+        });
+    }
+
+    function renderPieChart(currentData) {
+        const ctx = document.getElementById('metaPieChart').getContext('2d');
+        const oppDeckCounts = {};
+        currentData.forEach(d => { oppDeckCounts[d.oppDeck] = (oppDeckCounts[d.oppDeck] || 0) + 1; });
+
+        const labels = Object.keys(oppDeckCounts);
+        const data = Object.values(oppDeckCounts);
+
+        if (pieChartInstance) { pieChartInstance.destroy(); }
+
+        pieChartInstance = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: ['#3498db', '#e74c3c', '#2ecc71', '#f1c40f', '#9b59b6', '#34495e', '#e67e22', '#1abc9c'],
+                    borderWidth: 1
+                }]
+            },
+            options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        });
+    }
+
+    function renderMatchupTable(currentData) {
+        const container = document.getElementById('matchupTableContainer');
+        const currentDecks = deckLists[currentFormat];
+        
+        if (currentDecks.length === 0) {
+            container.innerHTML = '<p>データがありません。</p>';
+            return;
+        }
+
+        let html = '<table class="matchup-table"><thead><tr><th>自 \\ 相手</th>';
+        currentDecks.forEach(opp => { html += `<th>${opp}</th>`; });
+        html += '</tr></thead><tbody>';
+
+        currentDecks.forEach(my => {
+            html += `<tr><th>${my}</th>`;
+            currentDecks.forEach(opp => {
+                const matches = currentData.filter(m => m.myDeck === my && m.oppDeck === opp);
+                const wins = matches.filter(m => m.result === '勝ち').length;
+                const total = matches.length;
+
+                if (total === 0) {
+                    html += '<td style="color: #999;">-</td>';
+                } else {
+                    const winRate = Math.round((wins / total) * 100);
+                    let bgColor = 'transparent';
+                    if (winRate >= 60) bgColor = '#e8f5e9';
+                    else if (winRate <= 40) bgColor = '#ffebee';
+
+                    html += `<td style="background-color: ${bgColor};"><strong style="font-size: 14px;">${winRate}%</strong><br><span style="font-size: 11px; color: #666;">(${wins}-${total - wins})</span></td>`;
+                }
+            });
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    function clearData() {
+        if(confirm(`本当に【${currentFormat}】の全対戦データを消去しますか？`)) {
+            allMatchData = allMatchData.filter(d => d.format !== currentFormat);
+            localStorage.setItem('cardGameStats', JSON.stringify(allMatchData));
+            renderDashboard();
+        }
+    }
+
+    if (localStorage.getItem('customDeckList') && !localStorage.getItem('customDeckList_ND')) {
+        deckLists['ND'] = JSON.parse(localStorage.getItem('customDeckList'));
+        localStorage.setItem('customDeckList_ND', JSON.stringify(deckLists['ND']));
+        localStorage.removeItem('customDeckList'); 
+    }
+</script>
+
+</body>
+</html>
