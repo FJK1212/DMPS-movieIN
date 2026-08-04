@@ -151,6 +151,8 @@
         </div>
     </div>
 
+    <div id="autoStatusBadge" style="position: fixed; bottom: 10px; right: 10px; background: rgba(0,0,0,0.65); color: white; padding: 6px 14px; border-radius: 20px; font-size: 12px; z-index: 999;">⚪ 自動検出:未接続</div>
+
     <div id="screen-dashboard" class="screen">
         <div class="card">
             <h2>📈 <span id="dashFormatTitle">ND</span> 成績サマリー</h2>
@@ -450,8 +452,63 @@
     if (localStorage.getItem('customDeckList') && !localStorage.getItem('customDeckList_ND')) {
         deckLists['ND'] = JSON.parse(localStorage.getItem('customDeckList'));
         localStorage.setItem('customDeckList_ND', JSON.stringify(deckLists['ND']));
-        localStorage.removeItem('customDeckList'); 
+        localStorage.removeItem('customDeckList');
     }
+
+    // --- capture.py（PC自動検出）との連携 ---
+    // capture.py を実行すると立ち上がるローカルサーバーの /api/status を
+    // 1秒おきにポーリングし、先攻/後攻・勝敗を自動反映する。
+    // 勝敗が確定した時点で、選択済みのデッキがあれば自動的に記録して終了する。
+    let autoProcessing = false;
+
+    function setAutoBadge(connected, working) {
+        const badge = document.getElementById('autoStatusBadge');
+        if (!connected) {
+            badge.textContent = '⚪ 自動検出:未接続';
+        } else if (working) {
+            badge.textContent = '🟢 自動検出:記録中...';
+        } else {
+            badge.textContent = '🟢 自動検出:待機中';
+        }
+    }
+
+    async function pollAutoStatus() {
+        if (autoProcessing) return;
+        let data;
+        try {
+            const res = await fetch('/api/status');
+            if (!res.ok) { setAutoBadge(false); return; }
+            data = await res.json();
+        } catch (e) {
+            setAutoBadge(false);
+            return;
+        }
+        setAutoBadge(true, false);
+
+        if (data.turn === '先攻') document.getElementById('turnFirst').checked = true;
+        else if (data.turn === '後攻') document.getElementById('turnSecond').checked = true;
+
+        if (!data.armed && data.result) {
+            autoProcessing = true;
+            setAutoBadge(true, true);
+
+            const myDeck = document.getElementById('myDeckSelect').value;
+            const oppDeck = document.getElementById('oppDeckSelect').value;
+
+            if (data.result === '勝ち') document.getElementById('resultWin').checked = true;
+            else if (data.result === '負け') document.getElementById('resultLose').checked = true;
+
+            // デッキが選択済みの場合のみ自動記録する。未選択なら記録せずスキップし、
+            // ackだけ行って次の対戦の検出に備える（acknが無いと検出がロックされたままになるため）。
+            if (myDeck && oppDeck) {
+                saveAndFinish();
+            }
+            try { await fetch('/api/ack', { method: 'POST' }); } catch (e) {}
+            autoProcessing = false;
+        }
+    }
+
+    setInterval(pollAutoStatus, 1000);
 </script>
 
 </body>
